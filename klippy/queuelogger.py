@@ -39,7 +39,10 @@ class QueueListener(logging.handlers.TimedRotatingFileHandler):
         self.bg_queue.put_nowait(None)
         self.bg_thread.join()
     def set_rollover_info(self, name, info):
-        self.rollover_info[name] = info
+        if info is not None:
+            self.rollover_info[name] = info
+        else:
+            self.rollover_info.pop(name, None)
     def clear_rollover_info(self):
         self.rollover_info.clear()
     def doRollover(self):
