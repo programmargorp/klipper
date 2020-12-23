@@ -21,7 +21,7 @@ delxy_stepper_a_calc_position(struct stepper_kinematics *sk, struct move *m
 {
     struct delxy_stepper *ds = container_of(sk, struct delxy_stepper, sk);
     struct coord c = move_get_coord(m, move_time);
-    
+
     double dx = ds->tower_pos - c.x;
 
     return sqrt(ds->arm_2 - dx * dx) + c.y;
@@ -32,7 +32,7 @@ delxy_stepper_alloc(double arm_2, double tower_pos)
 {
     struct delxy_stepper *ds = malloc(sizeof(*ds));
     memset(ds, 0, sizeof(*ds));
-    
+
     ds->arm_2 = arm_2;
     ds->tower_pos = tower_pos;
     ds->sk.calc_position_cb = delxy_stepper_a_calc_position;
