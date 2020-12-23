@@ -61,7 +61,8 @@ class WebRequest:
         value = self.params.get(item, default)
         if value is Sentinel:
             raise WebRequestError("Missing Argument [%s]" % (item,))
-        if types is not None and type(value) not in types:
+        if (types is not None and type(value) not in types
+            and item in self.params):
             raise WebRequestError("Invalid Argument Type [%s]" % (item,))
         return value
 
@@ -168,19 +169,30 @@ class ClientConnection:
             self.sock.fileno(), self.process_received)
         self.partial_data = self.send_buffer = ""
         self.is_sending_data = False
-        logging.info(
-            "webhooks: New connection established")
+        self.set_client_info("?", "New connection")
+
+    def set_client_info(self, client_info, state_msg=None):
+        if state_msg is None:
+            state_msg = "Client info %s" % (repr(client_info),)
+        logging.info("webhooks client %s: %s", self.uid, state_msg)
+        log_id = "webhooks %s" % (self.uid,)
+        if client_info is None:
+            self.printer.set_rollover_info(log_id, None, log=False)
+            return
+        rollover_msg = "webhooks client %s: %s" % (self.uid, repr(client_info))
+        self.printer.set_rollover_info(log_id, rollover_msg, log=False)
 
     def close(self):
-        if self.fd_handle is not None:
-            logging.info("webhooks: Client connection closed")
-            self.reactor.unregister_fd(self.fd_handle)
-            self.fd_handle = None
-            try:
-                self.sock.close()
-            except socket.error:
-                pass
-            self.server.pop_client(self.uid)
+        if self.fd_handle is None:
+            return
+        self.set_client_info(None, "Disconnected")
+        self.reactor.unregister_fd(self.fd_handle)
+        self.fd_handle = None
+        try:
+            self.sock.close()
+        except socket.error:
+            pass
+        self.server.pop_client(self.uid)
 
     def is_closed(self):
         return self.fd_handle is None
@@ -216,7 +228,7 @@ class ClientConnection:
         try:
             func = self.webhooks.get_callback(web_request.get_method())
             func(web_request)
-        except homing.CommandError as e:
+        except self.printer.command_error as e:
             web_request.set_error(WebRequestError(e.message))
         except Exception as e:
             msg = ("Internal Error on WebRequest: %s"
@@ -263,8 +275,11 @@ class WebHooks:
     def __init__(self, printer):
         self.printer = printer
         self._endpoints = {"list_endpoints": self._handle_list_endpoints}
+        self._remote_methods = {}
         self.register_endpoint("info", self._handle_info_request)
         self.register_endpoint("emergency_stop", self._handle_estop_request)
+        self.register_endpoint("register_remote_method",
+                               self._handle_rpc_registration)
         self.sconn = ServerSocket(self, printer)
 
     def register_endpoint(self, path, callback):
@@ -273,12 +288,15 @@ class WebHooks:
         self._endpoints[path] = callback
 
     def _handle_list_endpoints(self, web_request):
-        web_request.send({'endpoints': self._endpoints.keys()})
+        web_request.send({'endpoints': list(self._endpoints.keys())})
 
     def _handle_info_request(self, web_request):
+        client_info = web_request.get_dict('client_info', None)
+        if client_info is not None:
+            web_request.get_client_connection().set_client_info(client_info)
         state_message, state = self.printer.get_state_message()
-        klipper_path = os.path.normpath(os.path.join(
-            os.path.dirname(__file__), ".."))
+        src_path = os.path.dirname(__file__)
+        klipper_path = os.path.normpath(os.path.join(src_path, ".."))
         response = {'state': state, 'state_message': state_message,
                     'hostname': socket.gethostname(),
                     'klipper_path': klipper_path, 'python_path': sys.executable}
@@ -289,6 +307,14 @@ class WebHooks:
 
     def _handle_estop_request(self, web_request):
         self.printer.invoke_shutdown("Shutdown due to webhooks request")
+
+    def _handle_rpc_registration(self, web_request):
+        template = web_request.get_dict('response_template')
+        method = web_request.get_str('remote_method')
+        new_conn = web_request.get_client_connection()
+        logging.info("webhooks: registering remote method '%s' "
+                     "for connection id: %d" % (method, id(new_conn)))
+        self._remote_methods.setdefault(method, {})[new_conn] = template
 
     def get_connection(self):
         return self.sconn
@@ -304,6 +330,24 @@ class WebHooks:
     def get_status(self, eventtime):
         state_message, state = self.printer.get_state_message()
         return {'state': state, 'state_message': state_message}
+
+    def call_remote_method(self, method, **kwargs):
+        if method not in self._remote_methods:
+            raise self.printer.command_error(
+                "Remote method '%s' not registered" % (method))
+        conn_map = self._remote_methods[method]
+        valid_conns = {}
+        for conn, template in conn_map.items():
+            if not conn.is_closed():
+                valid_conns[conn] = template
+                out = {'params': kwargs}
+                out.update(template)
+                conn.send(out)
+        if not valid_conns:
+            del self._remote_methods[method]
+            raise self.printer.command_error(
+                "No active connections for method '%s'" % (method))
+        self._remote_methods[method] = valid_conns
 
 class GCodeHelper:
     def __init__(self, printer):
