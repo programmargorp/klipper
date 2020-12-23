@@ -20,7 +20,7 @@ class DelXYKinematics:
 
         # Set the need homing flag
         self.needs_homing = True
-        
+
         # Get arm length and tower position parameters
         self.arm_lengths = [ stepper_configs[0].getfloat('arm_length'),
                         stepper_configs[1].getfloat('arm_length')]
@@ -33,9 +33,11 @@ class DelXYKinematics:
         self.abs_endstop_locations = [rail.get_homing_info().position_endstop
                                     for rail in self.rails]
         self.abs_endstop_locations[0] = self.abs_endstop_locations[0] + \
-            math.sqrt(self.arm2[0] - self.tower_dists[0] ** 2) + self.height_offset
+            math.sqrt(self.arm2[0] - self.tower_dists[0] ** 2) + \
+                self.height_offset
         self.abs_endstop_locations[1] = self.abs_endstop_locations[1] + \
-            math.sqrt(self.arm2[1] - self.tower_dists[1] ** 2) + self.height_offset
+            math.sqrt(self.arm2[1] - self.tower_dists[1] ** 2) + \
+                self.height_offset
         self.max_bed_y = config.getfloat('delxy_max_y', above=0.)
         self.max_z = min(
             [rail.get_homing_info().position_endstop for rail in self.rails])
@@ -57,14 +59,14 @@ class DelXYKinematics:
 
         config.get_printer().register_event_handler(
             "stepper_enable:motor_off", self._motor_off)
-        
+
         # Setup boundary checks
         self.max_velocity, self.max_accel = toolhead.get_max_velocity()
         self.max_z_velocity = config.getfloat(
-            'max_z_velocity', self.max_velocity, above=0., 
+            'max_z_velocity', self.max_velocity, above=0.,
             maxval=self.max_velocity)
         self.max_z_accel = config.getfloat(
-            'max_z_accel', self.max_accel, above=0., 
+            'max_z_accel', self.max_accel, above=0.,
             maxval=self.max_accel)
         self.limits = [(1.0, -1.0)] * 3
 
