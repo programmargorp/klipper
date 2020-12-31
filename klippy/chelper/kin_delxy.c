@@ -9,11 +9,12 @@
 #include "compiler.h" // __visible
 #include "itersolve.h" // struct stepper_kinematics
 #include "trapq.h" // move_get_coord
+#include <math.h> // sqrt
 
 struct delxy_stepper{
     struct stepper_kinematics sk;
     double arm_2, tower_pos;
-}
+};
 
 static double
 delxy_stepper_a_calc_position(struct stepper_kinematics *sk, struct move *m
