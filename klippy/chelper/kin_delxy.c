@@ -10,6 +10,7 @@
 #include "itersolve.h" // struct stepper_kinematics
 #include "trapq.h" // move_get_coord
 #include <math.h> // sqrt
+#include <stddef.h> // offsetof
 
 struct delxy_stepper{
     struct stepper_kinematics sk;
