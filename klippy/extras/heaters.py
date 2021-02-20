@@ -264,8 +264,9 @@ class PrinterHeaters:
         return self.heaters[heater_name]
     def setup_sensor(self, config):
         modules = ["thermistor", "adc_temperature", "spi_temperature",
-                   "bme280", "htu21d", "lm75", "rpi_temperature",
-                   "temperature_mcu"]
+                   "bme280", "htu21d", "lm75", "temperature_host",
+                   "temperature_mcu", "ds18b20"]
+
         for module_name in modules:
             self.printer.load_object(config, module_name)
         sensor_type = config.get('sensor_type')
@@ -284,8 +285,8 @@ class PrinterHeaters:
                 "G-Code sensor id %s already registered" % (gcode_id,))
         self.gcode_id_to_sensor[gcode_id] = psensor
     def get_status(self, eventtime):
-        return {'available_heaters': list(self.available_heaters),
-                'available_sensors': list(self.available_sensors)}
+        return {'available_heaters': self.available_heaters,
+                'available_sensors': self.available_sensors}
     def turn_off_all_heaters(self, print_time=0.):
         for heater in self.heaters.values():
             heater.set_temp(0.)
@@ -329,7 +330,11 @@ class PrinterHeaters:
         sensor_name = gcmd.get('SENSOR')
         if sensor_name not in self.available_sensors:
             raise gcmd.error("Unknown sensor '%s'" % (sensor_name,))
-        min_temp = gcmd.get_float('MINIMUM')
+        min_temp = gcmd.get_float('MINIMUM', float('-inf'))
+        max_temp = gcmd.get_float('MAXIMUM', float('inf'), above=min_temp)
+        if min_temp == float('-inf') and max_temp == float('inf'):
+            raise gcmd.error(
+                "Error on 'TEMPERATURE_WAIT': missing MINIMUM or MAXIMUM.")
         if self.printer.get_start_args().get('debugoutput') is not None:
             return
         if sensor_name in self.heaters:
@@ -341,7 +346,7 @@ class PrinterHeaters:
         eventtime = reactor.monotonic()
         while not self.printer.is_shutdown():
             temp, target = sensor.get_temp(eventtime)
-            if temp >= min_temp:
+            if temp >= min_temp and temp <= max_temp:
                 return
             print_time = toolhead.get_last_move_time()
             gcmd.respond_raw(self._get_temp(eventtime))
