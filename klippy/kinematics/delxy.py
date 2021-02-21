@@ -14,9 +14,9 @@ class DelXYKinematics:
         stepper_configs = [config.getsection('stepper_' + a) for a in 'abz']
         self.rails = [ stepper.PrinterRail(stepper_configs[0],
                             need_position_minmax = False),
-                       stepper.PrinterRail(stepper_configs[0],
+                       stepper.PrinterRail(stepper_configs[1],
                             need_position_minmax = False),
-                       stepper.PrinterRail(stepper_configs[0]) ]
+                       stepper.PrinterRail(stepper_configs[2]) ]
 
         # Set the need homing flag
         self.needs_homing = True
@@ -39,13 +39,12 @@ class DelXYKinematics:
             math.sqrt(self.arm2[1] - self.tower_dists[1] ** 2) + \
                 self.height_offset
         self.max_bed_y = config.getfloat('delxy_max_y', above=0.)
-        self.max_z = min(
-            [rail.get_homing_info().position_endstop for rail in self.rails])
+        self.max_z = self.rails[2].get_homing_info().position_endstop
         self.min_z = config.getfloat('delxy_min_z', 0, maxval=self.max_z)
 
         # Set up homing position
-        self.home_position = self._calc_delxy_cartesian_pos(
-                self.abs_endstop_locations)
+        self.home_position = tuple(self._calc_delxy_cartesian_pos(
+                self.abs_endstop_locations))
 
         # Allocate stepper solvers
         self.rails[0].setup_itersolve(
@@ -96,21 +95,25 @@ class DelXYKinematics:
         # Home all axes simultaneously
         homing_state.set_axes([0, 1, 2])
         forcepos = list(self.home_position)
+        # Force position to (0, 0, 0) for homing
+        forcepos[0] = 0
+        forcepos[1] = 0
+        forcepos[2] = 0
         homing_state.home_rails(self.rails, forcepos, self.home_position)
 
     def check_move(self, move):
         end_pos = move.end_pos
         if self.needs_homing:
-            raise homing.EndstopMoveError(end_pos, "Must home first")
+            raise move.move_error(end_pos, "Must home first")
         # Check X position limit
         if end_pos[0] < self.tower_dists[0] or end_pos[0] > self.tower_dists[1]:
-            raise homing.EndstopMoveError(end_pos)
+            raise move.move_error(end_pos)
         if end_pos[1] > self.max_bed_y:
             if end_pos[:2] != self.home_position[:2]:
-                    raise homing.EndstopMoveError(end_pos)
+                    raise move.move_error(end_pos)
         # Check Z safety
         if end_pos[2] < self.min_z:
-            raise homing.EndstopMoveError(end_pos)
+            raise move.move_error(end_pos)
 
     def get_status(self, eventtime):
         return {'homed_axes': '' if self.needs_homing else 'xyz'}
@@ -136,3 +139,6 @@ class DelXYKinematics:
             return [x3[0], y3[0], spos[2]]
         else:
             return [x3[1], y3[1], spos[2]]
+
+def load_kinematics(toolhead, config):
+    return DelXYKinematics(toolhead, config)
