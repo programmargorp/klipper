@@ -4,7 +4,7 @@
 # The left axis is A and the right axis is B.
 
 import logging, math
-import stepper, homing
+import stepper
 
 # Slow X moves once the tower to x ratio exceeds SLOW_RATIO
 SLOW_RATIO = 1.41
@@ -114,6 +114,13 @@ class DelXYKinematics:
         # Check Z safety
         if end_pos[2] < self.min_z:
             raise move.move_error(end_pos)
+        if not move.axes_d[2]:
+            # Normal XY move - use defaults
+            return
+        # Move with Z - update velocity and accel for slower Z axis
+        z_ratio = move.move_d / abs(move.axes_d[2])
+        move.limit_speed(
+            self.max_z_velocity * z_ratio, self.max_z_accel * z_ratio)
 
     def get_status(self, eventtime):
         return {'homed_axes': '' if self.needs_homing else 'xyz'}
