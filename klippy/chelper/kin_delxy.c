@@ -4,13 +4,13 @@
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
+#include <stddef.h> // offsetof
 #include <stdlib.h> // malloc
 #include <string.h> // memset
 #include "compiler.h" // __visible
 #include "itersolve.h" // struct stepper_kinematics
 #include "trapq.h" // move_get_coord
 #include <math.h> // sqrt
-#include <stddef.h> // offsetof
 
 struct delxy_stepper{
     struct stepper_kinematics sk;
@@ -25,6 +25,9 @@ delxy_stepper_a_calc_position(struct stepper_kinematics *sk, struct move *m
     struct coord c = move_get_coord(m, move_time);
 
     double dx = ds->tower_pos - c.x;
+    if(ds->tower_pos < 0){
+        dx = -ds->tower_pos + c.x;
+    }
 
     return sqrt(ds->arm_2 - dx * dx) + c.y;
 }
