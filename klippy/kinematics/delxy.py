@@ -82,7 +82,7 @@ class DelXYKinematics:
         return [s for rail in self.rails for s in rail.get_steppers()]
 
     def calc_tag_position(self):
-        spos = [rail.get_tag_position for rail in self.rails]
+        spos = [rail.get_tag_position() for rail in self.rails]
         return self._calc_delxy_cartesian_pos(spos)
 
     def set_position(self, newpos, homing_axes):
